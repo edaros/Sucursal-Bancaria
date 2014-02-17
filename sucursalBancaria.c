@@ -225,4 +225,5 @@ int main(int argc, char* argv[]) {
     printf("El balance final es : %d", balance);
     
     return (balance);
+
 }
