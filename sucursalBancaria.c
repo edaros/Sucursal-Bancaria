@@ -16,6 +16,7 @@ struct cuentaBancaria{
 };
 
 int provi = 0;
+//struct timeval mTime;
 
 //creamos un apuntador a cuentaBancaria para poder enviarlo como parámetro al nuevo hilo
 struct cuentaBancaria * cuentas;
@@ -126,7 +127,7 @@ void *mtoBancario(){
                         srand((int) centHour.tv_usec);        //semilla del random
                         dinero = (rand() % cuenta_retir->saldo);
                         transferir(&dinero, cuenta_retir, cuenta_consig);
-                        //printf("transferencia %d!\n", provi++);
+                      //printf("transferencia %d!\n", provi++);
                         break;
                     }else{  //si no entonces se espera a que lo suelten y se continúa.
                         usleep(100);
@@ -225,5 +226,4 @@ int main(int argc, char* argv[]) {
     printf("El balance final es : %d", balance);
     
     return (balance);
-
 }
