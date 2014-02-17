@@ -16,7 +16,6 @@ struct cuentaBancaria{
 };
 
 int provi = 0;
-struct timeval mTime;
 
 //creamos un apuntador a cuentaBancaria para poder enviarlo como parámetro al nuevo hilo
 struct cuentaBancaria * cuentas;
@@ -71,15 +70,17 @@ void *mtoBancario(){
     int  dinero;
     int random1, random2;
     sem_t semaforo_retir, semaforo_consig;
+    struct cuentaBancaria * cuenta_retir;
+    struct cuentaBancaria * cuenta_consig;
     //vamos a calcular el tiempo de procesamiento (repetición) de cada hilo
-    //vamos a comparar las milésimas actuales multiplicado por 10 para que tenga un valor trabajable.
+    //vamos a comparar las milésimas actuales con las que hayan después de una transacción.
     int tiempoInicial, tiempoFinal;
     struct timeval centHour;
-    gettimeofday(&centHour, 0);
+    gettimeofday(&centHour, 0); //agrega el tiempo actual en centHour
     tiempoInicial = centHour.tv_usec;
-    tiempoFinal = tiempoInicial + (*tiempoEspera*10);
+    tiempoFinal = tiempoInicial + (*tiempoEspera*1000); //micra más 1000, igual milésima.
     
-    //Debido al deadlock se se puede presentar vamos a dar una pequeña tolerancia de dos esperas para 
+    //Debido al deadlock se se puede presentar vamos a dar una pequeña tolerancia de dos recorridos para 
     //cada proceso y si no se libera entonces liberamos las cuentas y se las damos a otro proceso :D
     int toleranciaEspera1, toleranciaEspera2;
     
@@ -90,7 +91,7 @@ void *mtoBancario(){
         gettimeofday(&centHour, 0);
         srand((int) centHour.tv_usec);        //semilla del random
         random1 = rand()%(*numeroCuentas);
-        struct cuentaBancaria * cuenta_retir = &(cuentas[random1]);
+        cuenta_retir = &(cuentas[random1]);
         semaforo_retir = semaforos[random1];
         do{ //si con iguales entonces vuelve y busque otra cuenta para hacer una transacción
             gettimeofday(&centHour, 0);
@@ -98,34 +99,34 @@ void *mtoBancario(){
             random2 = rand()%(*numeroCuentas);
         }while(random1==random2);
         //tomamos una cuenta y semáforo diferente de las primeros
-        struct cuentaBancaria *cuenta_consig = &(cuentas[random2]);
+        cuenta_consig = &(cuentas[random2]);
         semaforo_consig = semaforos[random2];
     /*
      * Luego de obtener los semáforos de las cuentas vamos a revisar si están disponibles
      * o si ya están siendo usados por otro hilo
     */
         int wait = 1;
-        int semaDisponible1, semaDisponible2 = 0;
+        int semaDisponible1 = 1, semaDisponible2 = 1;
 
         while(wait && (toleranciaEspera1 < 2)){
             //primero miramos si está disponible el semáforo y lo bloqueamos!
             semaDisponible1 = sem_trywait(&semaforo_retir);
 
-            if((semaDisponible1+1)){     //si estaba disponible y se pudo bloquear!
+            if((semaDisponible1 == 0)){     //si estaba disponible y se pudo bloquear!
 
                 toleranciaEspera2 = 0;
                 
-                while(semaDisponible2+1 && (toleranciaEspera2 < 2)){      //ciclo para volver a iniciar la búsqueda del semáforo de la cuenta a consignar
+                while((toleranciaEspera2 < 2)){      //ciclo para volver a iniciar la búsqueda del semáforo de la cuenta a consignar
 
                     semaDisponible2 = sem_trywait(&semaforo_consig);
 
-                    if(semaDisponible2+1){ //si estaba disponible y se pudo bloquear!
+                    if(semaDisponible2 == 0){ //si estaba disponible y se pudo bloquear!
                         //creamos el monto a retirar a partir de la cuenta de donde va a salir la consignación.
                         gettimeofday(&centHour, 0);
                         srand((int) centHour.tv_usec);        //semilla del random
                         dinero = (rand() % cuenta_retir->saldo);
                         transferir(&dinero, cuenta_retir, cuenta_consig);
-                        printf("transferencia %d!\n", provi++);
+                        //printf("transferencia %d!\n", provi++);
                         break;
                     }else{  //si no entonces se espera a que lo suelten y se continúa.
                         usleep(100);
@@ -139,19 +140,8 @@ void *mtoBancario(){
                 continue;
             }
             wait = 0;
-            break;
         }
         //soltamos los semáforos si fueron capturados
-/*
-        if(toleranciaEspera1 < 2){
-            printf("tolerancia N° 1 rota!-------------------------------------\n");
-            sem_post(&semaforo_retir);
-        }
-        if(toleranciaEspera2 < 2 && toleranciaEspera1 < 2){
-            printf("tolerancia N° 2 rota!.......................................\n");
-            sem_post(&semaforo_consig);
-        }
-*/
         
         if(semaDisponible1 == 0){
             sem_post(&semaforo_retir);
@@ -159,8 +149,6 @@ void *mtoBancario(){
         if(semaDisponible2 == 0){
             sem_post(&semaforo_consig);
         }
-        
-        
         
         gettimeofday(&centHour, 0);
         tiempoInicial = centHour.tv_usec;
@@ -205,7 +193,7 @@ int main(int argc, char* argv[]) {
     
     //creamos iniciamos todos los semáforos
     for(i=0; i < numero_cuentas; i++){
-        sem_init(&vecSemaforos[i+1], 0, 1); //pshared en 0 para indicar que sólo puede ser usado por el hilo ppal.
+        sem_init(&vecSemaforos[i], 0, 1); //pshared en 0 para indicar que sólo puede ser usado por el hilo ppal.
     }//creados todos!
     semaforos = vecSemaforos;
     
@@ -214,26 +202,16 @@ int main(int argc, char* argv[]) {
     //mandamos como argumento del método, el tiempo de ejecución dividido por el número de hilos
     //para que cada uno procese el mismo tiempo
     
-/*
-    char * argumentos[2];// = {((timerRun/numeroHilos)), numero_cuentas};        //argumentos para el desarrollo del método
-    char argumento1[100], argumento2[100];
-    sprintf(argumento1, "%f", (timerRun/numeroHilos));
-    sprintf(argumento2, "%d", numero_cuentas);
-    argumentos[0] = argumento1;
-    argumentos[1] = argumento2;
-*/
     numeroCuentas = &numero_cuentas;
     tiempoEspera = &timerRun;
-    
     for(i=0; i < numeroHilos; i++){
-        
         pthread_create (&hilar[i], NULL, &mtoBancario, NULL);
     }
     //esperamos a que termine el hilar!
     for(i=0; i < numeroHilos; i++) pthread_join ( hilar[i], NULL);
     
     for(i=0; i < numero_cuentas; i++){
-        sem_unlink((&vecSemaforos[i]));   //desconectamos cada semáforo
+        sem_destroy(&vecSemaforos[i]);
     }//creados todos!
     //vamos a imprimir el valor totar de todas las cuentas!
     printf("El balance inicial fué : %d\n", balance);
@@ -243,7 +221,7 @@ int main(int argc, char* argv[]) {
         balance+=cuentasB[i].saldo;
     }
     
-    usleep(1000);
+    //usleep(1000);
     printf("El balance final es : %d", balance);
     
     return (balance);
