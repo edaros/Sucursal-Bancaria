@@ -207,7 +207,7 @@ int main(int argc, char* argv[]) {
     //esperamos a que termine el hilar!
     for(i=0; i < numeroHilos; i++) pthread_join ( hilar[i], NULL);
     
-    for(i=0; i < numero_cuentas; i++){
+    for(i=0; i < numero_cuentas; i++){ 
         sem_unlink(&(vecSemaforos[i]));   //desconectamos cada semáforo
     }//creados todos!
     //vamos a imprimir el valor totar de todas las cuentas!
