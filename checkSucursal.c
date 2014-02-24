@@ -11,10 +11,10 @@ int main(int argc, char * argv[]) {
     
     FILE *vectores;
     
-
-    //char nombre_programa[30];
-    //sprintf(nombre_programa, "%s", argv[1]);
-    
+/*
+ Crítica, sección para validar la entrada al programa se deja al programador! ;)
+ * es una cuestión diferente a los objetivos de esta práctica
+*/
     vectores = fopen(argv[2], "r");
 /*
  Sección específica para leer el resultado del programa de transacciones.
@@ -25,13 +25,9 @@ int main(int argc, char * argv[]) {
  /*
   * Fin de sección específica
   */
-    
-    
     char * param[7];      //se guardarán los parámetros del programa de la sucursal
-    
     //vamos a procesar la información dependiendo de cuánta cantidad de vectores hayan en el 
     //archivo para hacer el checking a el programa de sucursal bancaria.
-    
     char filas[100];
     int nroFilas = 0;
     while(fgets(filas,100,vectores)){     //a partir del número de filas vamos a saber cuántos vectores hay!
@@ -39,7 +35,6 @@ int main(int argc, char * argv[]) {
 			nroFilas +=1;		
 		}
     }
-    
     char ** argParam[nroFilas];
     //ahora vamos a crear los argumentos de cada uno de los procesos hijos! (vectores)
     int i = 0, j = 0;
@@ -48,9 +43,8 @@ int main(int argc, char * argv[]) {
     sprintf(dirPrograma, "./%s", argv[1]);
     param[0] = dirPrograma;
     char * paramTemp;
-
-
     int k = 0;
+    int nroPruduciones = 0;
     //repetiremos todo este proceso según el número de vectores de prueba
     while(k < nroFilas){
         while(fgets(filas,100,vectores) != NULL){
@@ -67,21 +61,19 @@ int main(int argc, char * argv[]) {
             break;
         }
         argParam[i] = param;   //guardamos todos los parámetros de los vectores
-  
         int balanceInicial;
-
         //repetición n veces el vector de prueba!
         int l = 0;
         int nrepeticiones;
-    
- nrepeticiones = atoi((argParam[i][5]));
+        nrepeticiones = atoi((argParam[i][5]));
+        
         while(l < nrepeticiones){
             argParam[i][5] = NULL;
             if(fork()==0){
                 if(execvp(dirPrograma,argParam[i])){
                     exit(1);
                 }else{
-                    printf("no dio este mansito!");
+                    printf("no dio este pirobo!");
                     i--;//por si no se puede crear el hijo se cree otro en su reemplzado en el siguiente paso
                     continue;
                 }
@@ -98,7 +90,7 @@ int main(int argc, char * argv[]) {
                 fgets(balance, 30, resultadoBalance);
                 balanceInt = atoi(balance);
                 printf("Repetición %d del vector N° %d\n", l+1 , i+1);
-                printf("La información de la producción N° %d de los vectores de prueba es:\n", i+1);
+                printf("La información de la producción N° %d de los vectores de prueba es:\n", ((nroPruduciones++)+1));
                 balanceInicial = (atoi((argParam[i][4])))*(atoi((argParam[i][3])));
                 printf("Balance inicial: %d | Balance final: %d\n", balanceInicial, balanceInt);
                 if(balanceInicial == balanceInt){
@@ -110,9 +102,10 @@ int main(int argc, char * argv[]) {
             }
             l++;
         }
-   
         i++;
         k++;
     }
+    fclose(resultadoBalance);   //cerramos el archivo.
+    remove("balanceFinal.txt"); //eliminamos el archivo.
     return(0);
 }

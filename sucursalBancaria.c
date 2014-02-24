@@ -15,7 +15,8 @@ struct cuentaBancaria{
     int saldo;
 };
 
-int provi = 0;
+//int provi = 0; //variable para revisar el número de transferencias!
+//struct timeval mTime;
 
 //creamos un apuntador a cuentaBancaria para poder enviarlo como parámetro al nuevo hilo
 struct cuentaBancaria * cuentas;
@@ -80,15 +81,12 @@ void *mtoBancario(){
     tiempoInicial = centHour.tv_usec;
     tiempoFinal = tiempoInicial + (*tiempoEspera*1000); //micra más 1000, igual milésima.
     
-    //Debido al deadlock se puede presentar vamos a dar una pequeña tolerancia de dos recorridos para 
-    //cada proceso y si no se libera entonces liberamos las cuentas y se las damos a otro proceso :D
-
-    int semaDisponible1, semaDisponible2;
+    
+    int semaDisponible1, semaDisponible2;       //validador que indica si está o no disponible el semáforo de la cuenta.
     int maxEspera = 0;          //variable para evitar que se realice una repetición excesova del siguiente ciclo.
     
     do{//este do while compara si ya la hora anterior superó la hora espefícada por el tiempo de espera.
         //seleccionamos dos cuentas aleatoriamente para poder transferir dinero de una a otra.
-
         gettimeofday(&centHour, 0);
         srand((int) centHour.tv_usec);        //semilla del random
         random1 = rand()%(*numeroCuentas);
@@ -106,44 +104,37 @@ void *mtoBancario(){
      * Luego de obtener los semáforos de las cuentas vamos a revisar si están disponibles
      * o si ya están siendo usados por otro hilo
     */
+        //primero miramos si está disponible el semáforo y lo bloqueamos!
+        semaDisponible1 = sem_trywait(&semaforo_retir);
+        if((semaDisponible1 == 0)){     //si estaba disponible y se pudo bloquear!
 
-        
-
-
-            //primero miramos si está disponible el semáforo y lo bloqueamos!
-            semaDisponible1 = sem_trywait(&semaforo_retir);
-            if((semaDisponible1 == 0)){     //si estaba disponible y se pudo bloquear!
-             
-
-                    semaDisponible2 = sem_trywait(&semaforo_consig);
-                    if(semaDisponible2 == 0){ //si estaba disponible y se pudo bloquear!
-                        //creamos el monto a retirar a partir de la cuenta de donde va a salir la consignación.
-                        gettimeofday(&centHour, 0);
-                        srand((int) centHour.tv_usec);        //semilla del random
-                        dinero = (rand() % cuenta_retir->saldo);
-                        transferir(&dinero, cuenta_retir, cuenta_consig);
-                       // printf("transferencia %d!\n", provi++);
-
-                        sem_post(&semaforo_consig);
-                    }
-
-
-                    sem_post(&semaforo_retir);
-            }
-
+                semaDisponible2 = sem_trywait(&semaforo_consig);
+                if(semaDisponible2 == 0){ //si estaba disponible y se pudo bloquear!
+                    //creamos el monto a retirar a partir de la cuenta de donde va a salir la consignación.
+                    gettimeofday(&centHour, 0);
+                    srand((int) centHour.tv_usec);        //semilla del random
+                    dinero = (rand() % cuenta_retir->saldo);
+                    transferir(&dinero, cuenta_retir, cuenta_consig);
+                   // printf("transferencia %d!\n", provi++); //sirve para ver el número de transferencia!
+                    sem_post(&semaforo_consig);
+                }
+                sem_post(&semaforo_retir);
+        }
+            
         gettimeofday(&centHour, 0);
         tiempoInicial = centHour.tv_usec;
-
     //si el tiempo inicial siguiente supera el tiempo final entonces siga! 
     //y si ya se han echo suficientes repeticiones como el tiempo de espera siga también!
     }while((tiempoInicial < tiempoFinal) && (maxEspera++<*tiempoEspera)); 
-
+    
     return NULL;
 }
 
 
 int main(int argc, char* argv[]) {
-
+/*
+ Falta hacer la crítica de la información, algo que corresponde a otro objetivo de otra práctica.
+*/
     int numero_cuentas = atoi(argv[3]), numeroHilos = atoi(argv[1]);
     int valor_inicial = atoi(argv[4]), timerRun = atoi(argv[2]);
     balance = (numero_cuentas*valor_inicial);
