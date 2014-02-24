@@ -16,7 +16,6 @@ struct cuentaBancaria{
 };
 
 int provi = 0;
-//struct timeval mTime;
 
 //creamos un apuntador a cuentaBancaria para poder enviarlo como parámetro al nuevo hilo
 struct cuentaBancaria * cuentas;
@@ -81,14 +80,15 @@ void *mtoBancario(){
     tiempoInicial = centHour.tv_usec;
     tiempoFinal = tiempoInicial + (*tiempoEspera*1000); //micra más 1000, igual milésima.
     
-    //Debido al deadlock se se puede presentar vamos a dar una pequeña tolerancia de dos recorridos para 
+    //Debido al deadlock se puede presentar vamos a dar una pequeña tolerancia de dos recorridos para 
     //cada proceso y si no se libera entonces liberamos las cuentas y se las damos a otro proceso :D
-    int toleranciaEspera1, toleranciaEspera2;
+
+    int semaDisponible1, semaDisponible2;
+    int maxEspera = 0;          //variable para evitar que se realice una repetición excesova del siguiente ciclo.
     
     do{//este do while compara si ya la hora anterior superó la hora espefícada por el tiempo de espera.
         //seleccionamos dos cuentas aleatoriamente para poder transferir dinero de una a otra.
-        toleranciaEspera1 = 0;
-        toleranciaEspera2 = 0;
+
         gettimeofday(&centHour, 0);
         srand((int) centHour.tv_usec);        //semilla del random
         random1 = rand()%(*numeroCuentas);
@@ -106,72 +106,51 @@ void *mtoBancario(){
      * Luego de obtener los semáforos de las cuentas vamos a revisar si están disponibles
      * o si ya están siendo usados por otro hilo
     */
-        int wait = 1;
-        int semaDisponible1 = 1, semaDisponible2 = 1;
 
-        while(wait && (toleranciaEspera1 < 2)){
+        
+
+
             //primero miramos si está disponible el semáforo y lo bloqueamos!
             semaDisponible1 = sem_trywait(&semaforo_retir);
-
             if((semaDisponible1 == 0)){     //si estaba disponible y se pudo bloquear!
-
-                toleranciaEspera2 = 0;
-                
-                while((toleranciaEspera2 < 2)){      //ciclo para volver a iniciar la búsqueda del semáforo de la cuenta a consignar
+             
 
                     semaDisponible2 = sem_trywait(&semaforo_consig);
-
                     if(semaDisponible2 == 0){ //si estaba disponible y se pudo bloquear!
                         //creamos el monto a retirar a partir de la cuenta de donde va a salir la consignación.
                         gettimeofday(&centHour, 0);
                         srand((int) centHour.tv_usec);        //semilla del random
                         dinero = (rand() % cuenta_retir->saldo);
                         transferir(&dinero, cuenta_retir, cuenta_consig);
-                      //printf("transferencia %d!\n", provi++);
-                        break;
-                    }else{  //si no entonces se espera a que lo suelten y se continúa.
-                        usleep(100);
-                        toleranciaEspera2+=1;
-                        continue;
+                       // printf("transferencia %d!\n", provi++);
+
+                        sem_post(&semaforo_consig);
                     }
-                }
-            }else{  //si no está diponible esperamos a que sea liberado y luego vuelve y juega
-                usleep(100);
-                toleranciaEspera1+=1;
-                continue;
+
+
+                    sem_post(&semaforo_retir);
             }
-            wait = 0;
-        }
-        //soltamos los semáforos si fueron capturados
-        
-        if(semaDisponible1 == 0){
-            sem_post(&semaforo_retir);
-        }
-        if(semaDisponible2 == 0){
-            sem_post(&semaforo_consig);
-        }
-        
+
         gettimeofday(&centHour, 0);
         tiempoInicial = centHour.tv_usec;
-        
-    }while(tiempoInicial < tiempoFinal); //si el tiempo inicial siguiente supera el tiempo final entonces siga!
-    
+
+    //si el tiempo inicial siguiente supera el tiempo final entonces siga! 
+    //y si ya se han echo suficientes repeticiones como el tiempo de espera siga también!
+    }while((tiempoInicial < tiempoFinal) && (maxEspera++<*tiempoEspera)); 
+
     return NULL;
 }
 
 
 int main(int argc, char* argv[]) {
-    
-/*
- Falta hacer la crítica luego la hago que no es tan importante.
-*/
-    
+
     int numero_cuentas = atoi(argv[3]), numeroHilos = atoi(argv[1]);
     int valor_inicial = atoi(argv[4]), timerRun = atoi(argv[2]);
-    
     balance = (numero_cuentas*valor_inicial);
+/*
     printf("El balance inicial es : %d\n", balance);
     printf("El valor inicial de cada cuenta es: %d\n", valor_inicial);
+*/
     
 /*
  Procedemos a crear las cuentas bancarias como lo indica el enunciado
@@ -196,13 +175,13 @@ int main(int argc, char* argv[]) {
     for(i=0; i < numero_cuentas; i++){
         sem_init(&vecSemaforos[i], 0, 1); //pshared en 0 para indicar que sólo puede ser usado por el hilo ppal.
     }//creados todos!
-    semaforos = vecSemaforos;
     
+    semaforos = vecSemaforos;
     //creamos el hilar!
     pthread_t hilar[numeroHilos];
     //mandamos como argumento del método, el tiempo de ejecución dividido por el número de hilos
     //para que cada uno procese el mismo tiempo
-    
+
     numeroCuentas = &numero_cuentas;
     tiempoEspera = &timerRun;
     for(i=0; i < numeroHilos; i++){
@@ -213,17 +192,32 @@ int main(int argc, char* argv[]) {
     
     for(i=0; i < numero_cuentas; i++){
         sem_destroy(&vecSemaforos[i]);
-    }//creados todos!
+    }//destruidos todos!
     //vamos a imprimir el valor totar de todas las cuentas!
+/*
     printf("El balance inicial fué : %d\n", balance);
+*/
     balance = 0;
     for(i=0; i < numero_cuentas; i++){
+/*
         printf("Cuenta N° %d, saldo diponible: %d\n", cuentasB[i].nroCuenta, cuentasB[i].saldo);
+*/
         balance+=cuentasB[i].saldo;
     }
+/*
+    printf("El balance final es : %d\n", balance);
+*/
+    /*
+     * Sección para enviar el resultado en un archivo plano para que pueda ser visto por el programa que hace
+     * las pruebas.
+     */
+    FILE * resultado;
+    resultado = fopen("balanceFinal.txt", "w");
+    fprintf(resultado, "%d", balance);
+    fclose(resultado);
+    /*
+     * Fin de la creación del archivo con el resultado
+     */
     
-    //usleep(1000);
-    printf("El balance final es : %d", balance);
-    
-    return (balance);
+    return (0);
 }
